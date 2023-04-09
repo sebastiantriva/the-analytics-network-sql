@@ -14,16 +14,142 @@ Clase 1
 
 
 Clase 2
-1 - 
-2 - 
-3 - 
+1 – select pais from stg.store_master group by pais order by pais
+2 – select subcategoria, count(codigo_producto) as cantidad from stg.product_master where is_active = 'true' group by subcategoria order by count(codigo_producto) desc3
+NOTA: se aplica el filtro is_active=true porque en el enunciado hace referencia a los productos disponibles para la venta, y en este caso sólo los registros con valores TRUE en el campo is_active presentan esa característica.
+3 – select orden, venta from stg.order_line_sale where moneda = 'ARS' and venta > 100000
+4 – select moneda, sum (descuento) as total_descuento from stg.order_line_sale where fecha between '2022-11-01' and '2022-11-30' group by moneda order by sum (descuento) asc
+5 – select moneda, sum (impuestos) as total_impuestos from stg.order_line_sale where fecha between '2022-01-01' and '2022-12-31' and moneda = 'EUR' group by moneda
+6 – select moneda, count (distinct creditos) as cantidad_creditos from stg.order_line_sale group by moneda order by count (creditos) desc
+NOTA: si bien en el enunciado sólo solicita saber la cantidad total de órdenes que has utilizado créditos (sería una query más simple debido a que representa menos línea de código), considero que resulta más interesante saber en forma desagregada el detalle de la cantidad de créditos por moneda. No obstante, el caso más simple sería:
+select count (distinct creditos) as cantidad_creditos from stg.order_line_sale
+7 – select tienda, moneda, sum (venta) as total_ventas, sum (descuento)*(-1) as total_descuentos, ( (sum (descuento)*(-1)) / sum (venta) * 100 ) as porcentaje_descuentos from stg.order_line_sale group by moneda, tienda order by tienda
+8 – select tienda, (sum(final)-sum(inicial)) / count (distinct fecha) as prom_inventario_diario from stg.inventory group by tienda order by tienda
+9 – select producto, sum(venta) + coalesce(sum(descuento),0) as total_venta_neta, (coalesce(sum(descuento),0)*(-1)) / sum(venta)*100 as porcentaje_desc
+from stg.order_line_sale where moneda = 'ARS' group by producto
+10 – select tienda, cast(fecha as varchar(10)), conteo from stg.market_count union all select tienda, cast(fecha as varchar(10)), conteo from stg.super_store_count
+11 – select * from stg.product_master where is_active = true and nombre like '%PHILIPS%'
+12 – select tienda, moneda, sum(venta) as valor_nominal from stg.order_line_sale group by tienda, moneda order by sum(venta) desc
+13 – select producto, moneda, ( sum(venta) + coalesce(sum(descuento),0) + sum(impuestos) + coalesce(sum(creditos),0) ) / sum(cantidad) as precio_promedio from stg.order_line_sale group by producto, moneda order by producto, moneda asc
+14 – select orden, moneda, sum(impuestos) / sum(venta) * 100 as tasa_de_impuesto from stg.order_line_sale group by orden, moneda order by orden
 
+ 
 Clase 3
-1 - 
-2 - 
-3 - 
+1 – select nombre, codigo_producto, categoria, case when color is null then 'Unknown' else color end as color_ajust from stg.product_master where nombre like '%PHILIPS%' or nombre like '%Samsung%' or nombre like '%SAMSUNG%'
+2 – select sm.pais, sm.provincia, ols.moneda, sum(ols.venta) as ventas_brutas, sum(ols.impuestos) as impuestos_pagados from stg.order_line_sale as ols left join stg.store_master as sm on ols.tienda = sm.codigo_tienda group by sm.pais, sm.provincia, ols.moneda order by sm.pais asc
+3 – select pm.subcategoria, ols.moneda, sum(ols.venta) as ventas_totales from stg.order_line_sale as ols left join stg.product_master as pm on ols.producto = pm.codigo_producto group by pm.subcategoria, ols.moneda order by pm.subcategoria asc, ols.moneda asc
+4 – select pm.subcategoria, sum(ols.cantidad), concat(sm.pais,'-',sm.provincia) as campo_concat from stg.order_line_sale as ols left join stg.product_master as pm on ols.producto = pm.codigo_producto left join stg.store_master as sm on ols.tienda = sm.codigo_tienda group by pm.subcategoria, concat(sm.pais,'-',sm.provincia) order by concat(sm.pais,'-',sm.provincia) asc
+5 – select sm.nombre, sm.fecha_apertura, sum(ssc.conteo) as cant_entradas from stg.super_store_count as ssc left join stg.store_master as sm on ssc.tienda = sm.codigo_tienda group by sm.nombre, sm.fecha_apertura order by sm.fecha_apertura asc
+6 – select i.tienda, sm.nombre as nombre_tienda, i.sku as codigo_producto, extract(month from cast(i.fecha as date)) as mes, (sum(final)-sum(inicial)) / count (distinct fecha) as prom_inventario_mes from stg.inventory as i left join stg.store_master as sm on i.tienda = sm.codigo_tienda group by i.tienda, sm.nombre, i.sku, extract(month from cast(i.fecha as date)) order by i.tienda asc, i.sku asc
+7 – with stg_material as ( 
+select ols.*, 
+	case when pm.material = 'Metal' then 'Metal' 
+	when pm.material = 'plastico' then 'Plástico'
+	else 'Unknown'
+	end as el_material
+from stg.order_line_sale as ols
+left join stg.product_master as pm
+on ols.producto = pm.codigo_producto
+)
+select stg_material.el_material, sum(stg_material.cantidad) as cantidad_vendida
+from stg_material
+group by stg_material.el_material
+order by sum(stg_material.cantidad) desc
+8 – select ols.*, 
+case when ols.moneda = 'ARS' then ols.venta/mafr.cotizacion_usd_peso
+when ols.moneda = 'URU' then ols.venta/mafr.cotizacion_usd_uru
+when ols.moneda = 'EUR' then ols.venta/mafr.cotizacion_usd_eur
+end as venta_bruta_usd
+from stg.order_line_sale as ols left join stg.monthly_average_fx_rate as mafr on date_part('month',ols.fecha) = date_part('month',mafr.mes)
+9 – with stg_ventas_usd as (
+select ols.*, 
+case when ols.moneda = 'ARS' then ols.venta/mafr.cotizacion_usd_peso
+when ols.moneda = 'URU' then ols.venta/mafr.cotizacion_usd_uru
+when ols.moneda = 'EUR' then ols.venta/mafr.cotizacion_usd_eur
+end as venta_bruta_usd
+from stg.order_line_sale as ols left join stg.monthly_average_fx_rate as mafr on date_part('month',ols.fecha) = date_part('month',mafr.mes)
+)
+select sum(stg_ventas_usd.venta_bruta_usd) as ventas_totales_empresa_en_usd from stg_ventas_usd
+10 – select ols.*,
+case 
+when ols.moneda = 'ARS' then ( (ols.venta + coalesce(ols.descuento,0)) / mafr.cotizacion_usd_peso ) - c.costo_promedio_usd
+when ols.moneda = 'URU' then ( (ols.venta + coalesce(ols.descuento,0)) / mafr.cotizacion_usd_uru ) - c.costo_promedio_usd
+when ols.moneda = 'EUR' then ( (ols.venta + coalesce(ols.descuento,0)) / mafr.cotizacion_usd_eur ) - c.costo_promedio_usd
+end as margen_usd
+from stg.order_line_sale as ols
+left join stg.monthly_average_fx_rate as mafr
+on date_part('month',ols.fecha) = date_part('month',mafr.mes)
+left join stg.cost as c
+on ols.producto = c.codigo_producto
+11 – select ols.orden, count(distinct pm.subsubcategoria) as cantidad_items_distintos from stg.order_line_sale as ols left join stg.product_master as pm on ols.producto = pm.codigo_producto group by ols.orden order by ols.orden asc
 
+ 
+ 
 Clase 4
-1 - 
-2 - 
-3 - 
+
+1 – create schema if not exists bkp;
+select *, cast ((concat (extract (year from current_date),extract (month from current_date),extract (day from current_date))) as int) as fecha_backup
+into bkp.product_master_20230409
+from stg.product_master
+Luego, para visualizar el contenido de la tabla ejecuto la siguiente línea de código: select * from bkp.product_master_20230409
+
+2 – UPDATE bkp.product_master_20230409 SET material = 'N/A' WHERE material is null;
+UPDATE bkp.product_master_20230409 SET color = 'N/A' WHERE color is null;
+Luego, para visualizar el contenido de la tabla ejecuto la siguiente línea de código: select * from bkp.product_master_20230409
+
+3 – UPDATE bkp.product_master_20230409 SET is_active = false WHERE subsubcategoria = 'Control remoto';
+Luego, para visualizar el contenido de la tabla ejecuto la siguiente línea de código: select * from bkp.product_master_20230409
+
+4 – ALTER TABLE bkp.product_master_20230409 ADD COLUMN is_local boolean;
+UPDATE bkp.product_master_20230409 SET is_local = true WHERE origen = 'Argentina';
+UPDATE bkp.product_master_20230409 SET is_local = false WHERE origen != 'Argentina';
+
+5 – ALTER TABLE stg.order_line_sale ADD COLUMN line_key varchar(20);
+UPDATE stg.order_line_sale SET line_key = concat(orden,producto);
+Luego, para visualizar el contenido de la tabla ejecuto la siguiente línea de código: select * from stg.order_line_sale
+NOTA: se define al campo ‘line_key’ con el tipo de dato varchar(20) ya que el campo ‘orden’ es varchar(10) y el campo ‘producto’ es varchar(10), por lo que es suficiente con 20 (10+10) caracteres para definir este nuevo campo.
+
+6 – DELETE FROM stg.order_line_sale WHERE pos = 1;
+Luego, para visualizar el contenido de la tabla ejecuto la siguiente línea de código: select * from stg.order_line_sale
+
+7 – DROP TABLE IF EXISTS stg.employees ;
+    
+CREATE TABLE stg.employees
+                 (
+                           id_employee		serial primary key
+                            , nombre		VARCHAR(255) not null
+                            , apellido		VARCHAR(255) not null
+ 		, fecha_entrada		DATE not null
+ 		, fecha_salida		DATE
+		, telefono		VARCHAR(255)
+		, pais			VARCHAR(100) not null
+                            , provincia		VARCHAR(100) not null
+		, codigo_tienda		SMALLINT not null
+		, posicion		VARCHAR(255) not null
+                 );
+Luego, para chequear que se ha creado correctamente (aunque su contenido es vacío) ejecuto la siguiente línea de código: select * from stg.employees
+
+8 – INSERT INTO stg.employees (nombre, apellido, fecha_entrada, fecha_salida, telefono, pais, provincia, codigo_tienda, posicion) VALUES
+('Juan', 'Perez', '2022-01-01', null,'+541113869867', 'Argentina', 'Santa Fe', 2, 'Vendedor'), 
+('Catalina', 'Garcia', '2022-03-01', null, null, 'Argentina', 'Buenos Aires', 2, 'Representante Comercial'),
+('Ana', 'Valdez', '2020-02-21', '2022-03-01', null, 'España', 'Madrid', 8, 'Jefe Logistica'),
+('Fernando', 'Moralez', '2022-04-04', null, null, 'España', 'Valencia', 9, 'Vendedor');
+Luego, para visualizar el contenido de la tabla ejecuto la siguiente línea de código: select * from stg.employees
+
+9 – select *, cast(current_date as date) as last_updated_ts into bkp.cost from stg.cost
+Luego, para visualizar el contenido de la tabla ejecuto la siguiente línea de código
+select * from bkp.cost
+
+10 – Se puede hacer uso de la instrucción ROLLBACK siempre y cuando el borrado de los registros haya sido realizado por medio de una transacción.
+En otras palabras, el ROLLBACK se puede hacer siempre y cuando no se haya hecho COMMIT TRANSACTION (normalmente, las instrucciones se ‘commitean’ en forma automática). Para que no se ‘commitee’ automáticamente se debería haber escrito las siguientes líneas de código:
+BEGIN TRANSACTION
+DELETE FROM stg.order_line_sale WHERE pos = 1;
+Luego visualizar la tabla con el siguiente código:
+select * from stg.order_line_sale
+Sólo si se detecta que todo está OK, en ese caso se debe escribir el siguiente código:
+COMMIT TRANSACTION
+Pero si se detecta que está NO OK, en ese caso se debe escribir el siguiente código:
+ROLLBACK TRANSACTION
+Por lo tanto, si los registros han sido borrados sin una transacción, entonces la única manera de recuperarlos es a través de un backup (que debió de haberse hecho previamente).
+Por último, si aún así no se dispone de ese backup, entonces definitivamente se han perdido los registros borrados y no hay forma de recuperarlos.
+
