@@ -152,4 +152,3 @@ Pero si se detecta que está NO OK, en ese caso se debe escribir el siguiente c�
 ROLLBACK TRANSACTION
 Por lo tanto, si los registros han sido borrados sin una transacción, entonces la única manera de recuperarlos es a través de un backup (que debió de haberse hecho previamente).
 Por último, si aún así no se dispone de ese backup, entonces definitivamente se han perdido los registros borrados y no hay forma de recuperarlos.
-
