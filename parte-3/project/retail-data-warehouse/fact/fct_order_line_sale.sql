@@ -19,5 +19,11 @@ CREATE TABLE fct.order_line_sale
         pos        SMALLINT,
         is_walkout BOOLEAN
     
+        constraint fk_product_id_order_line_sale
+        foreign key (producto)
+        references dim.product_master (codigo_producto),
     
+        constraint fk_tienda_id_order_line_sale
+        foreign key (tienda)
+        references dim.store_master (codigo_tienda)
 );
