@@ -3,8 +3,9 @@
 DROP TABLE IF EXISTS fct.market_count;
     
 CREATE TABLE fct.market_count
-                 (
-                              tienda SMALLINT   PRIMARY KEY
-                            , fecha  INTEGER
-                            , conteo SMALLINT
-                 );
+(
+        id_market_count     INTEGER PRIMARY KEY,
+        tienda              SMALLINT,
+        fecha               INTEGER,
+        conteo              SMALLINT,
+);
