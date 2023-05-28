@@ -22,5 +22,5 @@ CREATE TABLE dim.product_master
                      
 	constraint fk_codigo_producto_product_master
 	foreign key (product_id)
-	references dim.order_line_sale(producto)
+	references fct.order_line_sale(producto)
 );
