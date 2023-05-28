@@ -1,0 +1,74 @@
+Respuestas
+
+with stg_promedio_ventas_diario as (
+select tienda, producto, fecha, sum(cantidad) as cantidad_vendida
+from stg.order_line_sale
+group by tienda, producto, fecha
+order by tienda asc, producto asc, fecha asc
+),
+stg_promedio_ventas_sem_ant as (
+select 
+	pvd1.tienda,
+	pvd1.producto,
+	pvd1.fecha,
+	sum (case when (pvd1.fecha - pvd2.fecha) <= 6 then pvd2.cantidad_vendida else 0 end)/7 as promedio_cantidad_vendida_last_7_days
+from stg_promedio_ventas_diario as pvd1
+left join stg_promedio_ventas_diario as pvd2
+on pvd1.tienda = pvd2.tienda
+and pvd1.producto = pvd2.producto
+and pvd1.fecha >= pvd2.fecha
+group by pvd1.producto, pvd1.tienda, pvd1.fecha--, pvd2.fecha, pvd1.cantidad_vendida, pvd2.cantidad_vendida
+order by pvd1.tienda asc, pvd1.producto asc, pvd1.fecha asc
+)
+select 
+	ols.*,
+	extract(year from ols.fecha) as anio,
+	extract(month from ols.fecha) as mes,
+	ols.venta as venta_bruta,
+	venta + coalesce(descuento,0) as venta_neta,
+	c.costo_promedio_usd as costo_usd,
+	case 
+		when ols.moneda = 'ARS' then ols.venta / mafr.cotizacion_usd_peso
+		when ols.moneda = 'URU' then ols.venta / mafr.cotizacion_usd_uru
+		when ols.moneda = 'EUR' then ols.venta / mafr.cotizacion_usd_eur
+	end as venta_bruta_usd, 
+	case
+		when ols.moneda = 'ARS' then (ols.venta + coalesce(ols.descuento,0)) / mafr.cotizacion_usd_peso
+		when ols.moneda = 'URU' then (ols.venta + coalesce(ols.descuento,0)) / mafr.cotizacion_usd_uru
+		when ols.moneda = 'EUR' then (ols.venta + coalesce(ols.descuento,0)) / mafr.cotizacion_usd_eur
+	end as venta_neta_usd,
+	case
+		when ols.moneda = 'ARS' then ( (ols.venta + coalesce(ols.descuento,0)) / mafr.cotizacion_usd_peso ) - c.costo_promedio_usd
+		when ols.moneda = 'URU' then ( (ols.venta + coalesce(ols.descuento,0)) / mafr.cotizacion_usd_uru ) - c.costo_promedio_usd
+		when ols.moneda = 'EUR' then ( (ols.venta + coalesce(ols.descuento,0)) / mafr.cotizacion_usd_eur ) - c.costo_promedio_usd
+	end as margen_bruto_usd,
+	case
+		when ols.moneda = 'ARS' then ( (ols.venta + coalesce(ols.descuento,0) - ols.impuestos) / mafr.cotizacion_usd_peso ) - c.costo_promedio_usd
+		when ols.moneda = 'URU' then ( (ols.venta + coalesce(ols.descuento,0) - ols.impuestos) / mafr.cotizacion_usd_uru ) - c.costo_promedio_usd
+		when ols.moneda = 'EUR' then ( (ols.venta + coalesce(ols.descuento,0) - ols.impuestos) / mafr.cotizacion_usd_eur ) - c.costo_promedio_usd
+	end as margen_neto_usd,
+	sm.pais,
+	sm.provincia,
+	pm.*,
+	d.anio,
+	d.mes,
+	d.anio_fiscal,
+	d.anio_fiscal_text,
+	d.fiscal_qarter,
+	(i.inicial+i.final)/2 as inventario_promedio,
+	pvsa.promedio_cantidad_vendida_last_7_days
+from stg.order_line_sale as ols
+left join stg.cost as c
+on ols.producto = c.codigo_producto
+left join stg.monthly_average_fx_rate as mafr
+on date_part('month',ols.fecha) = date_part('month',mafr.mes)
+inner join stg.store_master as sm
+on ols.tienda = sm.codigo_tienda
+inner join stg.product_master as pm
+on ols.producto = pm.codigo_producto
+inner join stg.date as d
+on ols.fecha = d.fecha
+inner join stg.inventory as i
+on ols.tienda = i.tienda and ols.producto = i.sku and ols.fecha = i.fecha
+inner join stg_promedio_ventas_sem_ant as pvsa
+on ols.tienda = pvsa.tienda and ols.producto = pvsa.producto and ols.fecha = pvsa.fecha
