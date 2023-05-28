@@ -17,7 +17,7 @@ CREATE TABLE fct.order_line_sale
         creditos   DECIMAL(18,5),
         moneda     VARCHAR(3),
         pos        SMALLINT,
-        is_walkout BOOLEAN
+        is_walkout BOOLEAN,
     
         constraint fk_product_id_order_line_sale
         foreign key (producto)
