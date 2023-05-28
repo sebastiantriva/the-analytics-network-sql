@@ -1,0 +1,185 @@
+Ejercicio 1
+•	Ejecutar el siguiente script para crear la tabla turistas dentro del esquema test.
+•	Cuales son las ciudades donde la afluencia de turistas es continuamente creciente.
+create schema test;
+drop table if exists test.turistas;
+create table test.turistas(city varchar(50),days date,cases int);
+insert into test.turistas values('CABA','2022-01-01',100);
+insert into test.turistas values('CABA','2022-01-02',200);
+insert into test.turistas values('CABA','2022-01-03',300);
+insert into test.turistas values('Cordoba','2022-01-01',100);
+insert into test.turistas values('Cordoba','2022-01-02',100);
+insert into test.turistas values('Cordoba','2022-01-03',300);
+insert into test.turistas values('Madrid','2022-01-01',100);
+insert into test.turistas values('Madrid','2022-01-02',200);
+insert into test.turistas values('Madrid','2022-01-03',150);
+insert into test.turistas values('Punta del Este','2022-01-01',100);
+insert into test.turistas values('Punta del Este','2022-01-02',300);
+insert into test.turistas values('Punta del Este','2022-01-03',200);
+insert into test.turistas values('Punta del Este','2022-01-04',400);
+
+
+Respuesta
+with test_aux1 as (
+select *,
+coalesce (lag (cases) over (partition by city order by days asc),0) as cases_anterior,
+cases - coalesce (lag (cases) over (partition by city order by days asc),0) as dif_act_vs_ant,
+case 
+when (cases - coalesce (lag (cases) over (partition by city order by days asc),0))>0 then true
+else false 
+end as es_creciente
+from test.turistas
+),
+test_aux2 as (
+select city, 
+case
+when test_aux1.es_creciente = true then count (test_aux1.es_creciente)
+else 0
+end as cant_es_creciente_true,
+case
+when test_aux1.es_creciente = false then count (test_aux1.es_creciente)
+else 0
+end as cant_es_creciente_false
+from test_aux1
+group by city, test_aux1.es_creciente 
+order by city asc
+),
+test_aux3 as (
+select city, sum (cant_es_creciente_true) as suma_crec_true, sum (cant_es_creciente_false) as suma_crec_false
+from test_aux2
+group by city
+order by city asc
+)
+select city
+from test_aux3
+where suma_crec_false = 0
+ 
+ 
+ 
+ 
+Ejercicio 2
+•	Ejecutar el siguiente script para crear la tabla empleados dentro del esquema test.
+•	Encontrar a los empleados cuyo salario es mayor que el de su manager.
+drop table if exists test.empleados;
+create table test.empleados (emp_id int, empleado varchar(50), salario bigint, manager_id int);
+insert into test.empleados values (1,'Clara',10000,4);
+insert into test.empleados values (2,'Pedro',15000,5);
+insert into test.empleados values (3,'Daniel',10000,4);
+insert into test.empleados values (4,'Hernan',5000,2);
+insert into test.empleados values (5,'Debora',12000,6);
+insert into test.empleados values (6,'Ricardo',12000,2);
+insert into test.empleados values (7,'Luciano',9000,2);
+insert into test.empleados values (8,'Romina',5000,2);
+
+Respuesta
+with test_emp_aux1 as (
+select emp_id, empleado, salario
+from test.empleados
+),
+test_emp_aux2 as (
+select e.emp_id, e.empleado, e.salario, e.manager_id, e1.emp_id as jefe_id, e1.empleado as nombre, e1.salario as salario_jefe  
+from test.empleados as e
+left join test_emp_aux1 as e1
+on e.manager_id = e1.emp_id
+),
+test_emp_aux3 as (
+select *,
+case
+when salario > salario_jefe then true
+else false end as salario_mayor_jefe
+from test_emp_aux2
+)
+select *
+from test_emp_aux3
+where salario_mayor_jefe = true
+
+
+
+
+
+ 
+Ejercicio 3
+•	Ejecutar el siguiente script para crear la tabla players y matches dentro del esquema test.
+•	Encontrar el player_id ganador de cada grupo. El ganador es aquel que anota mas puntos (score) en caso de empate, el que tenga menor player_id gana.
+drop table if exists test.players;
+create table test.players (player_id int, group varchar(1));
+insert into test.players values (15,A);
+insert into test.players values (25,A);
+insert into test.players values (30,A);
+insert into test.players values (45,A);
+insert into test.players values (10,B);
+insert into test.players values (35,B);
+insert into test.players values (50,B);
+insert into test.players values (20,C);
+insert into test.players values (40,C);
+create table test.matches (match_id int, first_player int, second_player int, first_score int, second_score int);
+insert into test.matches values (1,15,45,3,0);
+insert into test.matches values (2,30,25,1,2);
+insert into test.matches values (3,30,15,2,0);
+insert into test.matches values (4,40,20,5,2);
+insert into test.matches values (5,35,50,1,1);
+
+Respuesta
+with test_matches_aux1 as (
+-- auxiliar para obtener los puntos de los matches
+select *, 
+case 
+when first_score > second_score then 3
+when first_score = second_score then 1
+else 0 end as first_points,
+case
+when first_score < second_score then 3
+when first_score = second_score then 1
+else 0 end as second_points
+from test.matches
+),
+test_matches_aux2 as 
+(
+-- auxiliar para obtener los puntos del 1er jugador
+select player_id, name_group, first_points
+from test.players as p
+inner join test_matches_aux1 as tma1
+on p.player_id = tma1.first_player
+),
+test_matches_aux3 as 
+(
+-- auxiliar para obtener los puntos del 2do jugador
+select player_id, name_group, second_points
+from test.players as p
+inner join test_matches_aux1 as tma1
+on p.player_id = tma1.second_player
+),
+test_matches_aux4 as
+(
+select player_id, name_group, first_points as points 
+from test_matches_aux2 as tma2
+union all 
+select player_id, name_group, second_points as points
+from test_matches_aux3 as tma3
+),
+test_matches_aux5 as
+(
+select name_group, player_id, sum(points) as suma_puntos
+from test_matches_aux4
+group by name_group, player_id
+order by name_group asc, sum(points) desc, player_id asc
+),
+test_matches_aux6 as
+(
+select name_group, max (suma_puntos) as max_suma_puntos
+from test_matches_aux5
+group by name_group
+order by name_group asc
+),
+test_matches_aux7 as
+(
+select tma5.name_group, tma5.player_id, tma5.suma_puntos, tma6.max_suma_puntos
+from test_matches_aux5 as tma5
+inner join test_matches_aux6 as tma6
+on tma5.name_group = tma6.name_group
+where tma5.suma_puntos = tma6.max_suma_puntos
+)
+select name_group, min (player_id) as winner_player, suma_puntos as total_points
+from test_matches_aux7
+group by name_group, suma_puntos
+order by name_group asc
