@@ -14,5 +14,5 @@ CREATE TABLE dim.store_master
       tipo           VARCHAR(100),
       fecha_apertura DATE,
       latitud        DECIMAL(10, 8),
-      longitud       DECIMAL(11, 8),
+      longitud       DECIMAL(11, 8)
 );
