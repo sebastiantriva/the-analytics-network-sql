@@ -4,6 +4,7 @@ DROP TABLE IF EXISTS dim.date;
 
 CREATE TABLE dim.date
               (
+                  id_fecha              integer PRIMARY KEY,
                   fecha                 date,
                   anio                  integer,
                   mes                   integer,
