@@ -5,7 +5,8 @@ DROP TABLE IF EXISTS fct.order_line_sale;
     
 CREATE TABLE fct.order_line_sale
 (
-        orden      VARCHAR(10) PRIMARY KEY,
+        id_orden   INTEGER PRIMARY KEY,
+        orden      VARCHAR(10),
         producto   VARCHAR(10),
         tienda     SMALLINT,
         fecha      DATE,
