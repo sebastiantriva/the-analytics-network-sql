@@ -1,0 +1,742 @@
+CURSO SQL – Parte 2 – Respuestas
+Clase 6
+1 - create or replace view stg.ingreso_tiendas as
+select tienda, cast(fecha as varchar(10)), conteo 
+from stg.market_count
+union all 
+select tienda, cast(fecha as varchar(10)), conteo
+from stg.super_store_count
+;
+Luego, para visualizar la vista creada se utiliza la siguiente línea de código:
+select * from stg.ingreso_tiendas
+
+2 – DROP TABLE IF EXISTS stg.super_store_count_september;
+    
+CREATE TABLE stg.super_store_count_september
+                 (
+                              tienda SMALLINT
+                            , fecha  DATE
+                            , conteo SMALLINT
+                 );
+-- Verifico que la tabla esté vacía haciendo lo siguiente: 
+select * from stg.super_store_count_september
+-- Luego importo los datos y vuelvo a correr para chequear que los datos se importaron.
+select * from stg.super_store_count_september
+-- Los datos se importaron efectivamente.
+-- Luego agrego estos datos en market_count con las siguientes lineas de código:
+select tienda, cast(fecha as varchar(10)), conteo 
+from stg.market_count 
+union all
+select tienda, cast(fecha as varchar(10)), conteo
+from stg.super_store_count_september
+-- Efectivamente el resultudao arroja la union (405 registros, 165 de market_count y 240 de super_sotre_count_september)
+-- Luego visualizo market_count con la siguiente linea de código
+select * from stg.market_count
+-- Como market_count es una vista, no se almacenan los datos adicionales de super_store_count_september
+-- Pero si market_count hubiese sido una tabla, el agregado de registros hubiera quedado almacenado.
+
+3 – create or replace view stg.margen_bruto_usd as
+select ols.*,
+case 
+when ols.moneda = 'ARS' then ( (ols.venta + coalesce(ols.descuento,0)) / mafr.cotizacion_usd_peso ) - c.costo_promedio_usd
+when ols.moneda = 'URU' then ( (ols.venta + coalesce(ols.descuento,0)) / mafr.cotizacion_usd_uru ) - c.costo_promedio_usd
+when ols.moneda = 'EUR' then ( (ols.venta + coalesce(ols.descuento,0)) / mafr.cotizacion_usd_eur ) - c.costo_promedio_usd
+end as margen_bruto_usd,
+case 
+when ols.moneda = 'ARS' then ols.venta / mafr.cotizacion_usd_peso
+when ols.moneda = 'URU' then ols.venta / mafr.cotizacion_usd_uru
+when ols.moneda = 'EUR' then ols.venta / mafr.cotizacion_usd_eur
+end as ventas_usd,
+case 
+when ols.moneda = 'ARS' then coalesce(ols.descuento,0) / mafr.cotizacion_usd_peso
+when ols.moneda = 'URU' then coalesce(ols.descuento,0) / mafr.cotizacion_usd_uru
+when ols.moneda = 'EUR' then coalesce(ols.descuento,0) / mafr.cotizacion_usd_eur
+end as descuentos_usd,
+case 
+when ols.moneda = 'ARS' then coalesce(ols.creditos,0) / mafr.cotizacion_usd_peso
+when ols.moneda = 'URU' then coalesce(ols.creditos,0) / mafr.cotizacion_usd_uru
+when ols.moneda = 'EUR' then coalesce(ols.creditos,0) / mafr.cotizacion_usd_eur
+end as creditos_usd
+from stg.order_line_sale as ols
+left join stg.monthly_average_fx_rate as mafr
+on date_part('month',ols.fecha) = date_part('month',mafr.mes)
+left join stg.cost as c
+on ols.producto = c.codigo_producto
+;
+-- Luego ejecuto la siguiente linea de código para visualizar el resultado
+select * from stg.margen_bruto_usd
+
+
+4 – select codigo_producto, count(1)
+from stg.product_master
+group by codigo_producto
+having count(1) > 1
+-- El resultado es que no hay registros donde el código de producto esté duplicado.
+-- De esta manera, se verifica que el nivel de agregación de esta tabla es ‘código de producto’.
+-- El nivel de agregación es el mínimo nivel de detalle en el que se muestran los datos.
+
+5 – select pm.subcategoria, sum(mb_usd.margen_bruto_usd) as total_margen_bruto_usd
+from stg.margen_bruto_usd as mb_usd
+left join stg.product_master as pm
+on mb_usd.producto = pm.codigo_producto
+group by pm.subcategoria
+order by sum(mb_usd.margen_bruto_usd) desc, pm.subcategoria asc
+
+6 – with stg_auxiliar as (
+select orden, sum(venta) as total_venta
+from stg.order_line_sale
+group by orden
+	)
+select ols.orden, ols.producto, ols.venta,
+ols.venta / aux.total_venta * 100 as contribucion_venta_bruta 
+from stg.order_line_sale as ols
+left join stg_auxiliar as aux
+on ols.orden = aux.orden
+
+
+7 – DROP TABLE IF EXISTS stg.suppliers;
+    
+CREATE TABLE stg.suppliers
+                 (
+                              codigo_producto VARCHAR(255)
+                            , nombre  VARCHAR(255)
+                            , is_primary BOOLEAN
+);
+-- Verifico que la tabla esté vacía haciendo lo siguiente: 
+select * from stg.suppliers
+-- Luego importo los datos y vuelvo a correr para chequear que los datos se importaron.
+select * from stg.suppliers
+-- Los datos se importaron efectivamente.
+-- Finalmente, para saber las ventas por proveedor ejecuto las siguientes líneas de código
+select sup.nombre, sum(ventas_usd) as ventas_brutas_usd
+from stg.margen_bruto_usd as mb_usd
+left join stg.suppliers as sup
+on mb_usd.producto = sup.codigo_producto
+group by sup.nombre
+order by sum(ventas_usd) desc
+
+
+8	– 
+-- Query de validación
+select line_key, count(1)
+from stg.margen_bruto_usd as mb_usd
+left join stg.suppliers as sup
+on mb_usd.producto = sup.codigo_producto
+group by line_key
+having count(1) > 1
+-- Explicación de lo sucedido: La vista margen_bruto_usd posee 40 registros
+-- al hacer el left join con suppliers se generaron 54 registros en total
+-- se han generado 14 duplicados.
+-- Esto se debe a que en la tabla suppliers existe un mismo código de producto con varios nombres, por ej: p100023 con TodoTech (true), Soportes TV (false) y La cueva de la tecnología (false) y p200087 con Acer (true) y Compumundo (false).
+-- La query que no genera duplicación sería la siguiente:
+select sup.nombre, sum(ventas_usd) as ventas_brutas_usd
+from stg.margen_bruto_usd as mb_usd
+left join stg.suppliers as sup
+on mb_usd.producto = sup.codigo_producto
+where sup.is_primary = 'true'
+group by sup.nombre
+order by sum(ventas_usd) desc
+
+
+ 
+Clase 7
+1 – with stg_nulos as (
+select *,
+case
+when descuento is null then 1
+else 0 end as cant_desc_null,
+case
+when creditos is null then 1
+else 0 end as cant_cred_null
+from stg.order_line_sale
+), 
+stg_nulos_aux1 as (
+select 
+count (distinct orden) as cant_total_orders,
+cast (sum(cant_desc_null) as float) as total_cant_desc_null,
+cast (sum (cant_cred_null) as float) as total_cant_cred_null
+from stg_nulos
+)
+select
+total_cant_desc_null / cant_total_orders * 100 as porcentage_desc_nulls,
+total_cant_cred_null / cant_total_orders * 100 as porcentage_cred_nulls
+from stg_nulos_aux1
+
+
+2 – with stg_ventas as (
+select ols.*, extract(year from ols.fecha) as anio, extract(month from ols.fecha) as mes, ols.venta as venta_bruta, venta + coalesce(descuento,0) as venta_neta, c.costo_promedio_usd as costo_usd,
+case 
+when ols.moneda = 'ARS' then ols.venta / mafr.cotizacion_usd_peso
+when ols.moneda = 'URU' then ols.venta / mafr.cotizacion_usd_uru
+when ols.moneda = 'EUR' then ols.venta / mafr.cotizacion_usd_eur
+end as venta_bruta_usd, 
+case
+when ols.moneda = 'ARS' then (ols.venta + coalesce(ols.descuento,0)) / mafr.cotizacion_usd_peso
+when ols.moneda = 'URU' then (ols.venta + coalesce(ols.descuento,0)) / mafr.cotizacion_usd_uru
+when ols.moneda = 'EUR' then (ols.venta + coalesce(ols.descuento,0)) / mafr.cotizacion_usd_eur
+end as venta_neta_usd,
+case
+when ols.moneda = 'ARS' then ( (ols.venta + coalesce(ols.descuento,0)) / mafr.cotizacion_usd_peso ) - c.costo_promedio_usd
+when ols.moneda = 'URU' then ( (ols.venta + coalesce(ols.descuento,0)) / mafr.cotizacion_usd_uru ) - c.costo_promedio_usd
+when ols.moneda = 'EUR' then ( (ols.venta + coalesce(ols.descuento,0)) / mafr.cotizacion_usd_eur ) - c.costo_promedio_usd
+end as margen_usd
+from stg.order_line_sale as ols
+left join stg.cost as c
+on ols.producto = c.codigo_producto
+left join stg.monthly_average_fx_rate as mafr
+on date_part('month',ols.fecha) = date_part('month',mafr.mes)
+),
+stg_total_ventas_brutas as (
+select anio, mes, tienda, sum (venta_bruta_usd) as total_ventas_brutas_usd
+from stg_ventas
+group by anio, mes, tienda
+order by anio asc, mes asc, tienda asc
+)
+select v.anio, v.mes, v.tienda, count (distinct v.orden) as cantidad_ordenes, sum (v.venta_bruta_usd) as total_ventas_brutas_usd, sum (v.venta_bruta_usd) / vb.total_ventas_brutas_usd * 100 as percent_total_de_ventas_brutas_usd
+from stg_ventas as v
+inner join stg_total_ventas_brutas as vb
+on v.anio = vb.anio
+and v.mes = vb.mes
+and v.tienda = vb.tienda
+where is_walkout = true
+group by v.anio, v.mes, v.tienda, vb.total_ventas_brutas_usd
+order by v.anio asc, v.mes asc, v.tienda asc
+
+
+
+3 – with stg_ventas as (
+select ols.*, extract(year from ols.fecha) as anio, extract(month from ols.fecha) as mes, ols.venta as venta_bruta, venta + coalesce(descuento,0) as venta_neta, c.costo_promedio_usd as costo_usd,
+case 
+when ols.moneda = 'ARS' then ols.venta / mafr.cotizacion_usd_peso
+when ols.moneda = 'URU' then ols.venta / mafr.cotizacion_usd_uru
+when ols.moneda = 'EUR' then ols.venta / mafr.cotizacion_usd_eur
+end as venta_bruta_usd, 
+case
+when ols.moneda = 'ARS' then (ols.venta + coalesce(ols.descuento,0)) / mafr.cotizacion_usd_peso
+when ols.moneda = 'URU' then (ols.venta + coalesce(ols.descuento,0)) / mafr.cotizacion_usd_uru
+when ols.moneda = 'EUR' then (ols.venta + coalesce(ols.descuento,0)) / mafr.cotizacion_usd_eur
+end as venta_neta_usd,
+case
+when ols.moneda = 'ARS' then ( (ols.venta + coalesce(ols.descuento,0)) / mafr.cotizacion_usd_peso ) - c.costo_promedio_usd
+when ols.moneda = 'URU' then ( (ols.venta + coalesce(ols.descuento,0)) / mafr.cotizacion_usd_uru ) - c.costo_promedio_usd
+when ols.moneda = 'EUR' then ( (ols.venta + coalesce(ols.descuento,0)) / mafr.cotizacion_usd_eur ) - c.costo_promedio_usd
+end as margen_usd
+from stg.order_line_sale as ols
+left join stg.cost as c
+on ols.producto = c.codigo_producto
+left join stg.monthly_average_fx_rate as mafr
+on date_part('month',ols.fecha) = date_part('month',mafr.mes)
+),
+stg_total_ventas_brutas as (
+select anio, mes, tienda, sum (venta_bruta_usd) as total_ventas_brutas_usd
+from stg_ventas
+group by anio, mes, tienda
+order by anio asc, mes asc, tienda asc
+),
+stg_aux1 as (
+select v.anio, v.mes, v.tienda, v.orden, v.producto, row_number () over (partition by v.orden, v.producto) as fila_numero --v.anio, v.mes, v.tienda, count (distinct v.orden) as cantidad_ordenes, sum (v.venta_bruta_usd) as total_ventas_brutas_usd, sum (v.venta_bruta_usd) / vb.total_ventas_brutas_usd * 100 as percent_total_de_ventas_brutas_usd
+from stg_ventas as v
+inner join stg_total_ventas_brutas as vb
+on v.anio = vb.anio
+and v.mes = vb.mes
+and v.tienda = vb.tienda
+)
+select *
+from stg_aux1
+where fila_numero = 1
+
+
+4 – with stg_ventas as (
+select ols.*, extract(year from ols.fecha) as anio, extract(month from ols.fecha) as mes, ols.venta as venta_bruta, venta + coalesce(descuento,0) as venta_neta, c.costo_promedio_usd as costo_usd,
+case 
+when ols.moneda = 'ARS' then ols.venta / mafr.cotizacion_usd_peso
+when ols.moneda = 'URU' then ols.venta / mafr.cotizacion_usd_uru
+when ols.moneda = 'EUR' then ols.venta / mafr.cotizacion_usd_eur
+end as venta_bruta_usd, 
+case
+when ols.moneda = 'ARS' then (ols.venta + coalesce(ols.descuento,0)) / mafr.cotizacion_usd_peso
+when ols.moneda = 'URU' then (ols.venta + coalesce(ols.descuento,0)) / mafr.cotizacion_usd_uru
+when ols.moneda = 'EUR' then (ols.venta + coalesce(ols.descuento,0)) / mafr.cotizacion_usd_eur
+end as venta_neta_usd,
+case
+when ols.moneda = 'ARS' then ( (ols.venta + coalesce(ols.descuento,0)) / mafr.cotizacion_usd_peso ) - c.costo_promedio_usd
+when ols.moneda = 'URU' then ( (ols.venta + coalesce(ols.descuento,0)) / mafr.cotizacion_usd_uru ) - c.costo_promedio_usd
+when ols.moneda = 'EUR' then ( (ols.venta + coalesce(ols.descuento,0)) / mafr.cotizacion_usd_eur ) - c.costo_promedio_usd
+end as margen_usd,
+pm.subcategoria
+from stg.order_line_sale as ols
+left join stg.cost as c
+on ols.producto = c.codigo_producto
+left join stg.monthly_average_fx_rate as mafr
+on date_part('month',ols.fecha) = date_part('month',mafr.mes)
+left join stg.product_master as pm
+on ols.producto = pm.codigo_producto
+)
+select sum(venta_bruta_usd) as total_venta_bruta_usd, sum (venta_neta_usd) as total_venta_neta_usd
+from stg_ventas
+where subcategoria != 'TV' and moneda != 'ARS'
+
+
+5 – with stg_ventas as (
+select ols.*, extract(year from ols.fecha) as anio, extract(month from ols.fecha) as mes, ols.venta as venta_bruta, venta + coalesce(descuento,0) as venta_neta, c.costo_promedio_usd as costo_usd,
+case 
+when ols.moneda = 'ARS' then ols.venta / mafr.cotizacion_usd_peso
+when ols.moneda = 'URU' then ols.venta / mafr.cotizacion_usd_uru
+when ols.moneda = 'EUR' then ols.venta / mafr.cotizacion_usd_eur
+end as venta_bruta_usd, 
+case
+when ols.moneda = 'ARS' then (ols.venta + coalesce(ols.descuento,0)) / mafr.cotizacion_usd_peso
+when ols.moneda = 'URU' then (ols.venta + coalesce(ols.descuento,0)) / mafr.cotizacion_usd_uru
+when ols.moneda = 'EUR' then (ols.venta + coalesce(ols.descuento,0)) / mafr.cotizacion_usd_eur
+end as venta_neta_usd,
+case
+when ols.moneda = 'ARS' then ( (ols.venta + coalesce(ols.descuento,0)) / mafr.cotizacion_usd_peso ) - c.costo_promedio_usd
+when ols.moneda = 'URU' then ( (ols.venta + coalesce(ols.descuento,0)) / mafr.cotizacion_usd_uru ) - c.costo_promedio_usd
+when ols.moneda = 'EUR' then ( (ols.venta + coalesce(ols.descuento,0)) / mafr.cotizacion_usd_eur ) - c.costo_promedio_usd
+end as margen_usd,
+pm.*
+from stg.order_line_sale as ols
+left join stg.cost as c
+on ols.producto = c.codigo_producto
+left join stg.monthly_average_fx_rate as mafr
+on date_part('month',ols.fecha) = date_part('month',mafr.mes)
+left join stg.product_master as pm
+on ols.producto = pm.codigo_producto
+),
+stg_cantidad_por_dia as (
+select fecha, sum(cantidad) as total_cantidad_vendida
+from stg_ventas
+group by fecha
+order by fecha asc
+),
+stg_aux1 as (
+select
+		cpd1.fecha as fecha_inicial,
+		cpd1.total_cantidad_vendida as total_cantidad_vendida_inicial,
+		cpd2.fecha as fecha_anterior,
+		cpd2.total_cantidad_vendida as total_cantidad_vendida_antes	
+from stg_cantidad_por_dia as cpd1
+left join stg_cantidad_por_dia as cpd2
+on cpd1.fecha > cpd2.fecha 
+)
+select 
+	distinct fecha_inicial as fecha,
+	total_cantidad_vendida_inicial as total_cantidad_vendida,
+	case
+		when (fecha_inicial-fecha_anterior <= 7) then coalesce(sum (total_cantidad_vendida_antes) over (partition by fecha_inicial order by fecha_inicial asc),0)
+		else 0
+	end as sumatoria_semana_anterior,
+	total_cantidad_vendida_inicial - coalesce(sum (total_cantidad_vendida_antes) over (partition by fecha_inicial order by fecha_inicial asc),0) as diferencia_total_cantidad_vendida
+from stg_aux1
+group by fecha_inicial, total_cantidad_vendida_inicial, fecha_anterior, total_cantidad_vendida_antes
+order by fecha_inicial asc
+
+
+6 – 
+with stg_inventory_aux1 as (
+select 
+	*,
+	(inicial+final)/2 as inventario_promedio
+from stg.inventory
+order by tienda asc, sku asc, fecha asc
+),
+stg_is_last_snapshot as (
+select 
+	tienda, sku,
+	max(fecha) as is_last_snapshot
+from stg_inventory_aux1
+group by tienda, sku
+order by tienda asc, sku asc
+),
+stg_promedio_ventas_diario as (
+select tienda, producto, fecha, sum(cantidad) as cantidad_vendida
+from stg.order_line_sale
+group by tienda, producto, fecha
+order by tienda asc, producto asc, fecha asc
+),
+stg_promedio_ventas_sem_ant as (
+select 
+	pvd1.tienda,
+	pvd1.producto,
+	pvd1.fecha,
+	sum (case when (pvd1.fecha - pvd2.fecha) <= 6 then pvd2.cantidad_vendida else 0 end)/7 as cantidad_vendida_last_7_days
+from stg_promedio_ventas_diario as pvd1
+left join stg_promedio_ventas_diario as pvd2
+on pvd1.tienda = pvd2.tienda
+and pvd1.producto = pvd2.producto
+and pvd1.fecha >= pvd2.fecha
+group by pvd1.producto, pvd1.tienda, pvd1.fecha--, pvd2.fecha, pvd1.cantidad_vendida, pvd2.cantidad_vendida
+order by pvd1.tienda asc, pvd1.producto asc, pvd1.fecha asc
+),
+stg_inventario_completo as (
+select 
+	inv_aux1.tienda,
+	inv_aux1.sku,
+	inv_aux1.fecha,
+	inv_aux1.inventario_promedio,
+	ils.is_last_snapshot,
+	pm.nombre as nombre_producto,
+	pm.categoria,
+	pm.subcategoria,
+	pm.subsubcategoria,
+	sm.pais,
+	sm.nombre as nombre_tienda,
+	c.costo_promedio_usd,
+	inv_aux1.inventario_promedio * c.costo_promedio_usd as costo_inv_usd,
+	pvsa.cantidad_vendida_last_7_days,
+	(inv_aux1.inventario_promedio / pvsa.cantidad_vendida_last_7_days) as days_on_hand
+from stg_inventory_aux1 as inv_aux1
+inner join stg_is_last_snapshot as ils
+on inv_aux1.tienda = ils.tienda and inv_aux1.sku = ils.sku
+inner join stg.product_master as pm
+on inv_aux1.sku = pm.codigo_producto
+inner join stg.cost as c
+on inv_aux1.sku = c.codigo_producto
+inner join stg.store_master as sm
+on inv_aux1.tienda = sm.codigo_tienda
+left join stg_promedio_ventas_sem_ant as pvsa
+on inv_aux1.tienda = pvsa.tienda and inv_aux1.sku = pvsa.producto and inv_aux1.fecha = pvsa.fecha
+order by inv_aux1.tienda asc, inv_aux1.sku asc, inv_aux1.fecha asc 
+)
+create or replace view stg.inventario_con_doh as
+select * from stg_inventario_completo
+;
+--Luego, para visualizar la vista creada se utiliza la siguiente línea de código:
+select * from stg.inventario_con_doh
+
+
+ 
+Clase 8
+1 – select
+	orden,
+	producto,
+	sum(venta) as venta_producto_orden,
+	sum(sum(venta)) over (partition by orden) as venta_orden,
+	sum(venta)/sum(sum(venta)) over (partition by orden)*100 as contribucion_ventas 
+from stg.order_line_sale
+group by orden, producto
+order by orden
+
+2 – 
+with stg_ventas as (
+select ols.*, extract(year from ols.fecha) as anio, extract(month from ols.fecha) as mes, ols.venta as venta_bruta, venta + coalesce(descuento,0) as venta_neta, c.costo_promedio_usd as costo_usd,
+case 
+when ols.moneda = 'ARS' then ols.venta / mafr.cotizacion_usd_peso
+when ols.moneda = 'URU' then ols.venta / mafr.cotizacion_usd_uru
+when ols.moneda = 'EUR' then ols.venta / mafr.cotizacion_usd_eur
+end as venta_bruta_usd, 
+case
+when ols.moneda = 'ARS' then (ols.venta + coalesce(ols.descuento,0)) / mafr.cotizacion_usd_peso
+when ols.moneda = 'URU' then (ols.venta + coalesce(ols.descuento,0)) / mafr.cotizacion_usd_uru
+when ols.moneda = 'EUR' then (ols.venta + coalesce(ols.descuento,0)) / mafr.cotizacion_usd_eur
+end as venta_neta_usd,
+case
+when ols.moneda = 'ARS' then ( (ols.venta + coalesce(ols.descuento,0)) / mafr.cotizacion_usd_peso ) - c.costo_promedio_usd
+when ols.moneda = 'URU' then ( (ols.venta + coalesce(ols.descuento,0)) / mafr.cotizacion_usd_uru ) - c.costo_promedio_usd
+when ols.moneda = 'EUR' then ( (ols.venta + coalesce(ols.descuento,0)) / mafr.cotizacion_usd_eur ) - c.costo_promedio_usd
+end as margen_usd
+from stg.order_line_sale as ols
+left join stg.cost as c
+on ols.producto = c.codigo_producto
+left join stg.monthly_average_fx_rate as mafr
+on date_part('month',ols.fecha) = date_part('month',mafr.mes)
+),
+stg_ventas_por_producto as (
+select anio, mes, producto, 
+sum(venta_bruta_usd) as venta_bruta_usd
+from stg_ventas
+group by anio, mes, producto
+order by anio asc, mes asc, producto asc
+),
+stg_ventas_brutas_total as (
+select anio, mes,
+sum(venta_bruta_usd) as total_venta_bruta_usd
+from stg_ventas
+group by anio, mes
+order by anio asc, mes asc
+),
+stg_acumulado_ventas_brutas as (
+select vpp.anio, vpp.mes, vpp.producto, vpp.venta_bruta_usd, vbt.total_venta_bruta_usd, vpp.venta_bruta_usd / vbt.total_venta_bruta_usd * 100 as porcentaje_venta_bruta
+from stg_ventas_por_producto as vpp
+left join stg_ventas_brutas_total as vbt
+on vpp.anio = vbt.anio
+and vpp.mes = vbt.mes
+order by vpp.anio asc, vpp.mes asc, vpp.venta_bruta_usd / vbt.total_venta_bruta_usd * 100 desc
+),
+stg_pareto as (
+select anio, mes, producto, total_venta_bruta_usd, venta_bruta_usd,
+sum(venta_bruta_usd) over (partition by anio, mes order by venta_bruta_usd desc) as venta_acumulada,
+sum(venta_bruta_usd) over (partition by anio, mes order by venta_bruta_usd desc) / total_venta_bruta_usd * 100 as porcentaje_venta_acumulada
+from stg_acumulado_ventas_brutas
+)
+create or replace view stg.pareto_de_ventas as
+select anio, mes, producto, porcentaje_venta_acumulada
+from stg_pareto
+where porcentaje_venta_acumulada <= 80
+;
+--Luego, para visualizar la vista creada se utiliza la siguiente línea de código:
+select * from stg.pareto_de_ventas
+
+
+3 – 
+with stg_ventas as (
+select ols.*, extract(year from ols.fecha) as anio, extract(month from ols.fecha) as mes, ols.venta as venta_bruta, venta + coalesce(descuento,0) as venta_neta, c.costo_promedio_usd as costo_usd,
+case 
+when ols.moneda = 'ARS' then ols.venta / mafr.cotizacion_usd_peso
+when ols.moneda = 'URU' then ols.venta / mafr.cotizacion_usd_uru
+when ols.moneda = 'EUR' then ols.venta / mafr.cotizacion_usd_eur
+end as venta_bruta_usd, 
+case
+when ols.moneda = 'ARS' then (ols.venta + coalesce(ols.descuento,0)) / mafr.cotizacion_usd_peso
+when ols.moneda = 'URU' then (ols.venta + coalesce(ols.descuento,0)) / mafr.cotizacion_usd_uru
+when ols.moneda = 'EUR' then (ols.venta + coalesce(ols.descuento,0)) / mafr.cotizacion_usd_eur
+end as venta_neta_usd,
+case
+when ols.moneda = 'ARS' then ( (ols.venta + coalesce(ols.descuento,0)) / mafr.cotizacion_usd_peso ) - c.costo_promedio_usd
+when ols.moneda = 'URU' then ( (ols.venta + coalesce(ols.descuento,0)) / mafr.cotizacion_usd_uru ) - c.costo_promedio_usd
+when ols.moneda = 'EUR' then ( (ols.venta + coalesce(ols.descuento,0)) / mafr.cotizacion_usd_eur ) - c.costo_promedio_usd
+end as margen_usd
+from stg.order_line_sale as ols
+left join stg.cost as c
+on ols.producto = c.codigo_producto
+left join stg.monthly_average_fx_rate as mafr
+on date_part('month',ols.fecha) = date_part('month',mafr.mes)
+),
+stg_ventas_por_tienda as (
+select tienda, anio, mes,
+sum(venta_bruta_usd) as total_venta_bruta_usd
+from stg_ventas
+group by anio, mes, tienda
+order by tienda asc, anio asc, mes asc
+),
+stg_ventas_tienda_con_historia as (
+select tienda, anio, mes, total_venta_bruta_usd,
+coalesce(lag(total_venta_bruta_usd) over (partition by tienda order by anio asc, mes asc),0) as total_venta_bruta_usd_anterior
+--sum(venta_bruta_usd) over (partition by anio, mes order by venta_bruta_usd desc) / total_venta_bruta_usd * 100 as porcentaje_venta_acumulada
+from stg_ventas_por_tienda
+)
+select tienda, anio, mes, total_venta_bruta_usd, total_venta_bruta_usd_anterior,
+total_venta_bruta_usd - total_venta_bruta_usd_anterior as diferencia_con_mes_anterior,
+case
+	when total_venta_bruta_usd_anterior = 0 then 0
+	else (total_venta_bruta_usd - total_venta_bruta_usd_anterior)/total_venta_bruta_usd_anterior*100
+end as porcentaje_crecimiento_respecto_a_mes_anterior
+from stg_ventas_tienda_con_historia
+
+
+4 – 
+with stg_ventas as (
+select ols.*, extract(year from ols.fecha) as anio, extract(month from ols.fecha) as mes, ols.venta as venta_bruta, venta + coalesce(descuento,0) as venta_neta, c.costo_promedio_usd as costo_usd,
+case 
+when ols.moneda = 'ARS' then ols.venta / mafr.cotizacion_usd_peso
+when ols.moneda = 'URU' then ols.venta / mafr.cotizacion_usd_uru
+when ols.moneda = 'EUR' then ols.venta / mafr.cotizacion_usd_eur
+end as venta_bruta_usd, 
+case
+when ols.moneda = 'ARS' then (ols.venta + coalesce(ols.descuento,0)) / mafr.cotizacion_usd_peso
+when ols.moneda = 'URU' then (ols.venta + coalesce(ols.descuento,0)) / mafr.cotizacion_usd_uru
+when ols.moneda = 'EUR' then (ols.venta + coalesce(ols.descuento,0)) / mafr.cotizacion_usd_eur
+end as venta_neta_usd,
+case
+when ols.moneda = 'ARS' then ( (ols.venta + coalesce(ols.descuento,0)) / mafr.cotizacion_usd_peso ) - c.costo_promedio_usd
+when ols.moneda = 'URU' then ( (ols.venta + coalesce(ols.descuento,0)) / mafr.cotizacion_usd_uru ) - c.costo_promedio_usd
+when ols.moneda = 'EUR' then ( (ols.venta + coalesce(ols.descuento,0)) / mafr.cotizacion_usd_eur ) - c.costo_promedio_usd
+end as margen_usd,
+case 
+when ols.moneda = 'ARS' then (ols.venta / mafr.cotizacion_usd_peso)/cantidad
+when ols.moneda = 'URU' then (ols.venta / mafr.cotizacion_usd_uru)/cantidad
+when ols.moneda = 'EUR' then (ols.venta / mafr.cotizacion_usd_eur)/cantidad
+end as venta_unitaria_bruta_usd
+from stg.order_line_sale as ols
+left join stg.cost as c
+on ols.producto = c.codigo_producto
+left join stg.monthly_average_fx_rate as mafr
+on date_part('month',ols.fecha) = date_part('month',mafr.mes)
+),
+stg_devoluciones_aux1 as (
+select 
+	*,
+	lead (hasta) over (partition by item order by id_movimiento) as hasta_2
+from stg.return_movements
+),
+stg_devoluciones_aux2 as (
+select *,
+first_value (desde) over (partition by item order by id_movimiento asc) as desde_inicial,
+last_value (hasta_2) over (partition by item order by id_movimiento asc rows between unbounded preceding and current row) as hasta_final
+from stg_devoluciones_aux1
+where hasta_2 is not null
+order by id_movimiento asc
+),
+create or replace view stg.devoluciones as
+select 
+	rm.orden_venta,
+	rm.item as sku,
+	rm.cantidad as cantidad_retornada,
+	rm.cantidad * v.venta_unitaria_bruta_usd as valor_usd_retornado,
+	pm.nombre,
+	rm.desde_inicial as primera_locacion,
+	rm.hasta_final as ultima_locacion
+from stg_devoluciones_aux2 as rm
+left join stg_ventas as v
+on rm.orden_venta =  v.orden
+and rm.item = v.producto
+left join stg.product_master as pm
+on rm.item = pm.codigo_producto
+;
+-- --Luego, para visualizar la vista creada se utiliza la siguiente línea de código:
+select * from stg.devoluciones
+
+
+5 – 
+-- Creo la serie de calendario y genero los datos solicitados
+with dias_del_anio as (
+select
+	--to_char (fecha, 'yyyymmdd') :: INT as date_id,
+	cast(fecha as date) as fecha,
+	cast (extract(year from cast(fecha as date)) as int) as anio,
+	cast (extract(month from cast(fecha as date)) as int) as mes,
+	to_char (fecha, 'day') :: varchar (10) as dia_de_semana,
+	case
+		when (to_char (fecha, 'day') like '%saturday%') then true
+		when (to_char (fecha, 'day') like '%sunday%') then true
+		else false 
+	end as is_weekend,
+	to_char (fecha, 'month') :: varchar (10) as mes_text,
+	case
+		when cast(fecha as date) between '2022-01-01' and '2022-01-31' then 2021 :: INT
+		when cast(fecha as date) between '2022-02-01' and '2023-01-31' then 2022 :: INT
+		when cast(fecha as date) between '2023-02-01' and '2024-01-31' then 2023 :: INT
+	end as anio_fiscal,
+	case
+		when cast(fecha as date) between '2022-01-01' and '2022-01-31' then 'FY2021' :: varchar (6)
+		when cast(fecha as date) between '2022-02-01' and '2023-01-31' then 'FY2022' :: varchar (6)
+		when cast(fecha as date) between '2023-02-01' and '2024-01-31' then 'FY2023' :: varchar (6)
+	end as anio_fiscal_text,
+	case
+		when cast (extract(month from cast(fecha as date)) as int) = 1 then 'Q4' :: varchar (2)
+		when cast (extract(month from cast(fecha as date)) as int) between 2 and 4 then 'Q1' :: varchar (2)
+		when cast (extract(month from cast(fecha as date)) as int) between 5 and 7 then 'Q2' :: varchar (2)
+		when cast (extract(month from cast(fecha as date)) as int) between 8 and 10 then 'Q3' :: varchar (2)
+		when cast (extract(month from cast(fecha as date)) as int) between 11 and 12 then 'Q4' :: varchar (2)
+	end as fiscal_qarter,
+	cast(fecha as date)- 365 as fecha_anio_anterior
+from
+(select cast('2022-01-01' as date) + (n || 'day') :: interval as fecha
+from generate_series (0,729) as n ) dd
+)
+select *
+into stg.date
+from dias_del_anio
+--Luego, para chequear que se ha creado correctamente (aunque su contenido es vacío) ejecuto la siguiente línea de código:
+select * from stg.date
+
+ 
+Clase 9
+1 – with stg_ventas as (
+select ols.*, extract(year from ols.fecha) as anio, extract(month from ols.fecha) as mes, ols.venta as venta_bruta, venta + coalesce(descuento,0) as venta_neta, c.costo_promedio_usd as costo_usd,
+case 
+when ols.moneda = 'ARS' then ols.venta / mafr.cotizacion_usd_peso
+when ols.moneda = 'URU' then ols.venta / mafr.cotizacion_usd_uru
+when ols.moneda = 'EUR' then ols.venta / mafr.cotizacion_usd_eur
+end as venta_bruta_usd, 
+case
+when ols.moneda = 'ARS' then (ols.venta + coalesce(ols.descuento,0)) / mafr.cotizacion_usd_peso
+when ols.moneda = 'URU' then (ols.venta + coalesce(ols.descuento,0)) / mafr.cotizacion_usd_uru
+when ols.moneda = 'EUR' then (ols.venta + coalesce(ols.descuento,0)) / mafr.cotizacion_usd_eur
+end as venta_neta_usd,
+case
+when ols.moneda = 'ARS' then ( (ols.venta + coalesce(ols.descuento,0)) / mafr.cotizacion_usd_peso ) - c.costo_promedio_usd
+when ols.moneda = 'URU' then ( (ols.venta + coalesce(ols.descuento,0)) / mafr.cotizacion_usd_uru ) - c.costo_promedio_usd
+when ols.moneda = 'EUR' then ( (ols.venta + coalesce(ols.descuento,0)) / mafr.cotizacion_usd_eur ) - c.costo_promedio_usd
+end as margen_usd
+from stg.order_line_sale as ols
+left join stg.cost as c
+on ols.producto = c.codigo_producto
+left join stg.monthly_average_fx_rate as mafr
+on date_part('month',ols.fecha) = date_part('month',mafr.mes)
+),
+stg_ventas_aux as (
+select tienda, anio, mes, sum(venta_bruta_usd) as total_ventas_brutas_usd
+from stg_ventas
+group by stg_ventas.tienda, stg_ventas.anio, stg_ventas.mes, stg_ventas.tienda
+order by stg_ventas.tienda asc, stg_ventas.anio asc, stg_ventas.mes asc
+)
+select
+	v1.tienda,
+	v1.anio,
+	v1.mes,
+	v1.total_ventas_brutas_usd as ventas_brutas_usd_actual,
+	coalesce(v1.total_ventas_brutas_usd - v2.total_ventas_brutas_usd, 0) as diferencia_ventas_usd_mes_anterior,
+	coalesce((v1.total_ventas_brutas_usd - v2.total_ventas_brutas_usd) / v1.total_ventas_brutas_usd * 100, 0) as perc_dif_ventas_mes_ant
+from stg_ventas_aux as v1
+left join stg_ventas_aux as v2
+on v1.tienda = v2.tienda
+and v1.anio = v2.anio
+and v1.mes > v2.mes
+
+
+2 – 
+select
+	*,
+	case 
+		when nombre like '%Samsung%' then 'Samsung'
+		when nombre like '%SAMSUNG%' then 'Samsung'
+		when nombre like '%PHILIPS%' then 'Philips'
+		when nombre like '%Philips%' then 'Philips'
+		when nombre like '%Acer%' then 'Acer'
+		when nombre like '%JBL%' then 'JBL'
+		when nombre like '%Tommy Hilfiger%' then 'Tommy Hilfiger'
+		when nombre like '%MOTOROLA%' then 'Motorola'
+		when nombre like '%Levi%' then 'Levis'
+		when nombre like '%PHILIPS%' then 'Philips'
+		else 'Unknown'
+	end as marca
+from stg.product_master
+
+
+3 – 
+-- Crear tabla competencia
+DROP TABLE IF EXISTS stg.competencia;
+CREATE TABLE stg.competencia
+                 (
+                              empresa  		VARCHAR(100)
+                            , rubro         		VARCHAR(100)
+                            , facturacion_num   	DECIMAL(6, 2)
+		                        , facturacion_type	VARCHAR(1)
+                 );
+-- Verifico que se creó correctamente
+select * from stg.competencia
+-- Inserción de datos
+INSERT INTO stg.competencia values 
+	('El Corte Ingles', 'departamental', 110.99, 'B'),
+	('Mercado Libre', 'ecommerce', 115.86, 'B'),
+	('Fallabela', 'departamental', 20.46, 'M'),
+	('Tienda Inglesa', 'departamental', 10.78, 'M'),
+	('Zara', 'indumentaria', 999.98, 'M');
+-- Verificación que datos se ingresaron correctamente
+select * from stg.competencia
+-- CTE para transformar todo en números operables entre sí
+with stg_competencia_aux1 as (
+select 
+		*, 
+		case
+			when facturacion_type = 'M' then facturacion_num * 1000000
+			when facturacion_type = 'B' then facturacion_num * 1000000000
+		end as facturacion_total
+from stg.competencia
+),
+-- CTE para crear las agrupaciones por rubro
+stg_competencia_aux2 as (
+select rubro, sum(facturacion_total) as facturacion_total_num
+from stg_competencia_aux1 as aux1
+group by rubro
+order by rubro asc
+)
+-- Query final solicitada
+select 
+	rubro,
+	case
+		when (facturacion_total_num/1000000000) >= 1 then concat(left(cast(facturacion_total_num/1000000000 as varchar(100)),6),'B')
+		else concat(left(cast(facturacion_total_num/1000000 as varchar(100)),6),'M') 
+		end as facturacion_total
+from stg_competencia_aux2 as aux2
