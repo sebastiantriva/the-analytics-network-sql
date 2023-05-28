@@ -18,4 +18,6 @@ CREATE TABLE fct.order_line_sale
         moneda     VARCHAR(3),
         pos        SMALLINT,
         is_walkout BOOLEAN
+    
+    
 );
