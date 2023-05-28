@@ -12,5 +12,17 @@ CREATE TABLE fct.return_movements
       desde           character varying (255)   NOT NULL,
       hasta           character varying (255)   NOT NULL,
       recibido_por    character varying (255),
-      fecha           date                      NOT NULL
+      fecha           date                      NOT NULL,
+      
+      constraint fk_orden_venta_id_return_movements
+      foreign key (orden_venta)
+      references fct.order_line_sale (orden),
+    
+      constraint fk_item_id_return_movements
+      foreign key (item)
+      references dim.product_master (codigo_producto),
+      
+      -- constraint fk_recibido_por_id_return_movements
+      -- foreign key (recibido_por)
+      -- references dim.employees (id_employee),
 );
