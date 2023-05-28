@@ -3,9 +3,9 @@ Maestro de productos que posee la empresa.
 is_active indica que productos estan actualmente a la venta
 */
 
-DROP TABLE IF EXISTS stg.product_master ;
+DROP TABLE IF EXISTS dim.product_master ;
     
-CREATE TABLE stg.product_master
+CREATE TABLE dim.product_master
                  (
                               codigo_producto VARCHAR(255)
                             , nombre          VARCHAR(255)
